@@ -53,6 +53,7 @@ SunOS 5.11
 #include "str.h"
 #include "byte.h"
 #include "logsys.h"
+#include "ttyname.h"
 
 static void logsys_utmpx(const char *user, const char *host, const char *name, long long pid, int flaglogin) {
 
@@ -63,7 +64,7 @@ static void logsys_utmpx(const char *user, const char *host, const char *name, l
     byte_zero(&ut, sizeof ut);
 
     /* line */
-    if (!name) name = ttyname(0);
+    if (!name) name = _ttyname(0);
     if (!name) return;
     if (str_start(name, "/dev/")) name += 5;
     str_copyn(ut.ut_line, sizeof ut.ut_line, name);
@@ -112,7 +113,7 @@ static void logsys_utmp(const char *user, const char *host, const char *name, lo
     byte_zero(&ut, sizeof ut);
 
     /* line */
-    if (!name) name = ttyname(0);
+    if (!name) name = _ttyname(0);
     if (!name) return;
     if (str_start(name, "/dev/")) name += 5;
     str_copyn(ut.ut_line, sizeof ut.ut_line, name);

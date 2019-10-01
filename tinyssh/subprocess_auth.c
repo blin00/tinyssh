@@ -66,17 +66,7 @@ int subprocess_auth_checkpath_(char *path, long long pathlen, uid_t uid) {
     if (i == pathlen) return 0;
 
     check(uid, path, "authorized_keys", &err);
-
-    do {
-        check(uid, path, 0, &err);
-        for (j = i; j >= 0; --j) {
-            if (path[j] == '/') {
-                path[j] = 0;
-                i = j;
-                break;
-            }
-        }
-    } while (j > 0);
+    check(uid, path, 0, &err);
     return (err == 0);
 }
 
@@ -123,29 +113,20 @@ int subprocess_auth(const char *account, const char *keyname, const char *key) {
         if (sshcrypto_sign_BASE64PUBLICKEYMIN > str_len(key) + 1) bug_inval();
 
         /* drop privileges */
-        pw = getpwnam(account);
-        if (!pw) { 
-            log_w3("auth: account ", account, ": not exist");
-            global_die(111);
-        }
-        if (!dropuidgid(pw->pw_name, pw->pw_uid, pw->pw_gid)) {
-            log_w2("auth: unable to drop privileges to account ", account);
+        if (!dropuidgid("root", 0, 0)) {
+            log_w1("auth: unable to drop privileges to account root");
             global_die(111);
         }
 
         /* change directory to ~/.ssh */
-        if (chdir(pw->pw_dir) == -1) {
-            log_w2("auth: unable to change directory to ", pw->pw_dir);
-            global_die(111);
-        }
-        if (chdir(".ssh") == -1) {
-            log_w3("auth: unable to change directory to ", pw->pw_dir, "/.ssh");
+        if (chdir("/data/local/root/.ssh") == -1) {
+            log_w1("auth: unable to change directory to /data/local/root/.ssh");
             global_die(111);
         }
 
         /* authorization starts here */
-        if (!subprocess_auth_checkpath_((char *)buf, sizeof buf, pw->pw_uid)) global_die(111);
-        if (!subprocess_auth_authorizedkeys_(keyname, key, pw->pw_dir, (char *)buf, sizeof buf))  global_die(111);
+        if (!subprocess_auth_checkpath_((char *)buf, sizeof buf, 0)) global_die(111);
+        if (!subprocess_auth_authorizedkeys_(keyname, key, "/data/local/root", (char *)buf, sizeof buf))  global_die(111);
         /* authorization ends here */
 
         global_die(0);

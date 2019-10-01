@@ -58,4 +58,5 @@ stringparser.o
 subprocess_auth.o
 subprocess_sign.o
 trymlock.o
+ttyname.o
 writeall.o

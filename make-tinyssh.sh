@@ -46,7 +46,6 @@ export LANG
 log0 "uname -a: `uname -a || :`"
 log0 "uname -F: `uname -F || :`"
 log0 "uname -M: `uname -M || :`"
-log0 "ulimit -a: `echo; ulimit -a || :`"
 
 log1 "obtaining compiler"
 rm -rf "${work}"
@@ -68,6 +67,28 @@ mkdir -p "${work}"
   done
 )
 compiler=`head -1 "${work}/compiler"`
+log1 "finishing"
+
+log1 "obtaining ar"
+rm -rf "${work}"
+mkdir -p "${work}"
+(
+  cd "${work}"
+  (
+    if [ x"${AR}" != x ]; then
+      echo "${AR} "
+    fi
+    cat "${top}/conf-ar"
+  ) | while read ar
+  do
+    touch test.o
+    ${ar} cr test.a test.o || { log2 "${ar} failed"; continue; }
+    log2 "${ar} ok"
+    echo "${ar}" > ar
+    break
+  done
+)
+ar=`head -1 "${work}/ar"`
 log1 "finishing"
 
 log1 "checking compiler options"
@@ -140,15 +161,10 @@ cp -pr sysdep/* "${work}"
     while read target source
     do
       [ -f "${include}/${target}" ] && continue
-      rm -f "${source}" "${target}.tmp" 
+      rm -f "${source}" "${target}.tmp"
+      [ -f "${source}.out" ] || continue
       ${compiler} -O0 -o "${source}" "${source}.c" ${libs} || continue
-      "./${source}" > "${target}.tmp" 2>/dev/null || continue
-      if [ -f "${source}.out" ]; then
-        cp "${source}.out" "${include}/${target}"
-      else
-        #runtime
-        cp "${target}.tmp" "${include}/${target}"
-      fi
+      cp "${source}.out" "${include}/${target}"
       log2 "${target} ${source}"
     done
   )
@@ -166,7 +182,7 @@ cp -pr crypto/* "${work}"
   do
     ${compiler} -I"${include}" -c "${x}.c" || { log2 "libtinynacl.a failed ... see the log ${log}"; exit 111; }
   done || exit 111
-  ar cr "${lib}/libtinynacl.a" `cat CRYPTOLIBS` || exit 0
+  ${ar} cr "${lib}/libtinynacl.a" `cat CRYPTOLIBS` || exit 0
 )
 log2 "libtinynacl.a ok"
 log1 "finishing"
@@ -178,66 +194,15 @@ log1 "starting crypto headers"
 rm -rf "${work}"
 mkdir -p "${work}"
 cp -p crypto/CRYPTOPRIMITIVES "${work}"
-cp -pr crypto-tests/*test.c "${work}"
-cp -pr crypto-tests/*.h "${work}"
-cp -pr crypto-tests/*.data "${work}" 2>/dev/null || :
 (
   cd "${work}"
   cat CRYPTOPRIMITIVES\
   | while read primitive checkflag
   do
-    if [ "x${checkflag}" = x0 ]; then
-      cp -p "${top}/crypto/${primitive}.h" "${include}"
-      continue;
+    if [ "x${checkflag}" != x0 ]; then
+      echo "#include \"${primitive}.h\"" >> crypto.h
     fi
-    testf=`echo "${primitive}" | sed 's/$/test/'`
-    (
-      echo '#include <stdio.h>'
-      echo "#include <${primitive}.h>"
-      echo 'int main(void) {'
-      echo "#ifdef ${primitive}_PRIMITIVE"
-      echo "printf(\"%s\\\\n\", ${primitive}_PRIMITIVE);"
-      echo '#else'
-      echo "#ifdef ${primitive}_IMPLEMENTATION"
-      echo "printf(\"%s\\\\n\", ${primitive}_IMPLEMENTATION);"
-      echo '#endif'
-      echo "#ifdef ${primitive}_implementation"
-      echo "printf(\"%s\\\\n\", ${primitive}_implementation);"
-      echo '#endif'
-      echo '#endif'
-      echo 'return 0; }'
-    ) > try.c
-    #try ext. crypto library
-    log0 "trying: ext. ${primitive}:"
-    if ${compiler} -c "${testf}.c" ${libs}; then
-      if ${compiler} -o "${testf}" "${testf}.o" ${libs}; then
-        if ${compiler} -o try try.c; then
-          if /bin/sh -ec "./${testf}"; then
-            log2 "${primitive}.h (`./try`) ok"
-            echo "#include <${primitive}.h>" >> crypto.h
-            continue
-          else
-            log2 "${primitive}.h (`./try`) failed"
-          fi
-        fi
-      fi
-    fi
-    #try int. crypto library
-    log0 "trying: int. ${primitive}:"
-    if cp -p "${top}/crypto/${primitive}.h" . ; then
-      if ${compilerorig} -I. -I"$include" -o "${testf}" "${testf}.c" ${origlibs}; then
-        if ${compilerorig} -I. -I"$include" -o try try.c; then
-          if /bin/sh -ec "./${testf}"; then
-            log2 "${primitive}.h (`./try`) ok"
-            echo "#include \"${primitive}.h\"" >> crypto.h
-            cp -p "${primitive}.h" "${include}"
-            continue
-          fi
-        fi
-      fi
-    fi
-    log2 "${primitive}.h failed ... see the log ${log}"
-    exit 111
+    cp -p "${top}/crypto/${primitive}.h" "${include}"
   done || exit 111
   cp crypto.h "${include}/crypto.h"
 )
@@ -246,45 +211,17 @@ log1 "finishing"
 rm -rf "${work}"
 mkdir -p "${work}"
 cp -pr tinyssh/* "${work}"
-cp -pr tinyssh-tests/*test.c "${work}"
-cp -pr tinyssh-tests/*.h "${work}"
-cp -pr _tinyssh/* "${work}" 2>/dev/null || :
 (
   cd "${work}"
   log1 "starting tinyssh objects"
-  touch SOURCES TARGETS _TARGETS
-  cat SOURCES TARGETS _TARGETS\
+  touch SOURCES TARGETS
+  cat SOURCES TARGETS\
   | while read x
   do
     ${compiler} "-DCOMPILER=\"${compilerorig}\"" "-DVERSION=\"${version}\"" -I"${include}" -c "${x}.c" || { log2 "${x}.o failed ... see the log ${log}"; exit 111; }
     log2 "${x}.o ok"
   done || exit 111
-  ar cr libtinyssh.a `cat LIBS` || exit 111
-  log1 "finishing"
-
-  #tests
-  log1 "starting tinyssh-tests"
-  cat LIBS \
-  | while read x
-  do
-    t=`echo ${x} | sed 's/.o$/test/'`
-    if [ ! -h "${t}.c" ]; then
-      ${compiler} -I"${include}" -c "${t}.c" || { log2 "${t} failed ... see the log ${log}"; exit 111; }
-      ${compiler} -I"${include}" -o "${t}" "${t}.o" libtinyssh.a ${libs} || { log2 "${t} failed ... see the log ${log}"; exit 111; }
-      "./${t}" || { log2 "${t} failed ... see the log ${log}"; exit 111; }
-      log2 "${t} ok"
-    fi
-  done || exit 111
-  log1 "finishing"
-
-  log1 "starting _tinyssh"
-  cat _TARGETS \
-  | while read x
-  do
-    ${compiler} -I"${include}" -o "${x}" "${x}.o" libtinyssh.a ${libs} || { log2 "${x} failed ... see the log ${log}"; exit 111; }
-    log2 "${x} ok"
-    cp -p "${x}" "${bin}/${x}";
-  done || exit 111
+  ${ar} cr libtinyssh.a `cat LIBS` || exit 111
   log1 "finishing"
 
   log1 "starting tinyssh"
@@ -292,18 +229,8 @@ cp -pr _tinyssh/* "${work}" 2>/dev/null || :
   | while read x
   do
     ${compiler} -I"${include}" -o "${x}" "${x}.o" libtinyssh.a ${libs} || { log2 "${x} failed ... see the log ${log}"; exit 111; }
+    cp -p "${x}" "${bin}/${x}"
     log2 "${x} ok"
-  done || exit 111
-  log1 "finishing"
-
-  log1 "starting tinyssh regression tests"
-  cat TARGETS \
-  | while read x
-  do
-    sh ${x}.rts > ${x}.out
-    cmp "${x}.out" "${x}.exp" || { log2 "${x} regression test failed ... see the difference `pwd`/${x}.out `pwd`/${x}.exp"; exit 111; }
-    log2 "${x} ok"
-    cp -p "${x}" "${bin}/${x}";
   done || exit 111
   log1 "finishing"
 
@@ -313,72 +240,4 @@ log1 "starting manpages"
 cp -pr man/* "${man}"
 log1 "finishing"
 
-log1 "counting words of code - tests"
-rm -rf "${work}"
-mkdir -p "${work}"
-
-for dir in tinyssh-tests crypto-tests _tinyssh; do
-  (
-    touch "${work}/${dir}"
-    [ -d "${dir}" ] || exit 0
-    cd "${dir}" 
-    cat *.c *.h > "${work}/${dir}" || :
-  )
-
-  (
-    cd "${work}"
-    cat "${dir}" \
-    | (
-      cpp -fpreprocessed || gcpp -fpreprocessed
-    ) | (
-      x=`sed 's/[_a-zA-Z0-9][_a-zA-Z0-9]*/x/g' | tr -d ' \012' | wc -c | tr -d ' '`
-      log2 "${dir} ${x}"
-    )
-  )
-done
-(
-  cd "${work}"
-  cat * \
-  | (
-    cpp -fpreprocessed || gcpp -fpreprocessed
-  ) | (
-    x=`sed 's/[_a-zA-Z0-9][_a-zA-Z0-9]*/x/g' | tr -d ' \012' | wc -c | tr -d ' '`
-    log2 "$x words of code"
-  )
-)
-log1 "finishing"
-
-
-echo "=== `date` === counting words of code"
-rm -rf "${work}"
-mkdir -p "${work}"
-
-for dir in sysdep tinyssh crypto; do
-  (
-    cd "${dir}"
-    cat *.c *.h > "${work}/${dir}" || :
-  )
-
-  (
-    cd "${work}"
-    cat "${dir}" \
-    | (
-      cpp -fpreprocessed || gcpp -fpreprocessed
-    ) | (
-      x=`sed 's/[_a-zA-Z0-9][_a-zA-Z0-9]*/x/g' | tr -d ' \012' | wc -c | tr -d ' '`
-      log2 "${dir} ${x}"
-    )
-  )
-done
-(
-  cd "${work}"
-  cat * \
-  | (
-    cpp -fpreprocessed || gcpp -fpreprocessed
-  ) | (
-    x=`sed 's/[_a-zA-Z0-9][_a-zA-Z0-9]*/x/g' | tr -d ' \012' | wc -c | tr -d ' '`
-    log2 "${x} words of code"
-  )
-)
-log1 "finishing"
 exit 0

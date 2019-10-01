@@ -2,7 +2,7 @@
 #include <utmpx.h>
 
 
-static void foo(void) {
+void foo(void) {
 
     struct utmpx ut;
 

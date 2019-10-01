@@ -61,4 +61,5 @@ tinysshd
 tinysshd-makekey
 tinysshd-printkey
 trymlock
+ttyname
 writeall

@@ -14,7 +14,7 @@ Public domain.
 #include <termios.h>
 #include <sys/ioctl.h> 
 extern char *ptsname(int);
-extern int grantpt(int);
+// extern int grantpt(int);
 extern int unlockpt(int);
 
 #include "hasopenpty.h"
@@ -31,7 +31,7 @@ extern int login_tty(int);
 #include "blocking.h"
 #include "global.h"
 #include "channel.h"
-
+#include "ttyname.h"
 
 static int _login_tty(int fd) {
 
@@ -43,7 +43,7 @@ static int _login_tty(int fd) {
     if (ioctl(fd, TIOCSCTTY, (char *)0) == -1) return -1;
 #endif
 
-    name = ttyname(fd);
+    name = _ttyname(fd);
     if (!name) return -1;
 
 #ifndef TIOCSCTTY
@@ -73,7 +73,7 @@ static int _openpty(int *amaster, int *aslave) {
     }
     if (master == -1) return -1;
 
-    if (grantpt(master) == -1) { close(master); return -1; }
+//  if (grantpt(master) == -1) { close(master); return -1; }
     if (unlockpt(master) == -1) { close(master); return -1; }
     slave_name = ptsname(master);
     if (!slave_name) { close(master); return -1; }
@@ -100,7 +100,7 @@ int channel_openpty(int *amaster, int *aslave) {
     if (_openpty(amaster, aslave) == -1) return 0;
 #endif
 
-   if (!ttyname(*aslave)) {
+   if (!_ttyname(*aslave)) {
         close(*amaster);
         close(*aslave);
         return 0;
@@ -120,7 +120,7 @@ long long channel_forkpty(int fd[3], int master, int slave) {
 
     long long pid;
 
-    if (!ttyname(slave)) return -1;
+    if (!_ttyname(slave)) return -1;
     
     fd[0] = fd[1] = master;
     fd[2] = -1;
@@ -134,7 +134,7 @@ long long channel_forkpty(int fd[3], int master, int slave) {
         case 0:
             close(master);
 #ifdef HASLOGINTTY
-            if (!ttyname(slave)) global_die(111);
+            if (!_ttyname(slave)) global_die(111);
             if (login_tty(slave) == -1) global_die(111);
 #else
             if (_login_tty(slave) == -1) global_die(111);

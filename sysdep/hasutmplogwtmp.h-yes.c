@@ -2,7 +2,7 @@
 
 extern void logwtmp(const char *, const char *, const char *);
 
-static void foo(void) {
+void foo(void) {
     logwtmp("", "", "");
 }
 
