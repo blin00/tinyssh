@@ -5,6 +5,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#include <string.h>
+#endif
 #include <unistd.h>
 
 static int fd = -1;
@@ -26,6 +29,10 @@ __attribute__((constructor)) static void init(void) {
 
 void randombytes(void *xv, long long xlen) {
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    memset(xv, 0xcc, xlen);
+    return;
+#else
     long long i;
     unsigned char *x = xv;
 
@@ -48,6 +55,7 @@ void randombytes(void *xv, long long xlen) {
     }
 #ifdef __GNUC__
     __asm__ __volatile__("" : : "r"(xv) : "memory");
+#endif
 #endif
 }
 

@@ -15,6 +15,9 @@ The 'trymlock' function tries to
 lock the memory to make it unswappable.
 */
 void trymlock(void *x, long long len) {
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    return;
+#endif
 #ifdef HASMLOCK
     mlock(x, len);
 #else
@@ -28,6 +31,9 @@ The 'trymunlock' function tries to
 unlock the memory.
 */
 void trymunlock(void *x, long long len) {
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    return;
+#endif
 #ifdef HASMLOCK
     munlock(x, len);
 #else

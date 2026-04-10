@@ -5,6 +5,10 @@
 #include "crypto_int16.h"
 #include "byte.h"
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#define volatile
+#endif
+
 void byte_copy(void *yv, long long ylen, const void *xv) {
 
     long long i;
@@ -31,7 +35,9 @@ void byte_zero(void *yv, long long ylen) {
     volatile char *y = yv;
 
     for (i = 0; i < ylen; ++i) y[i] = 0;
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #ifdef __GNUC__
     __asm__ __volatile__("" : : "r"(yv) : "memory");
+#endif
 #endif
 }

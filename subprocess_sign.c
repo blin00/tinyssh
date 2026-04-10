@@ -28,6 +28,50 @@ The 'subprocess_sign' function reads secret-key from 'keydir' and signs the data
 'ylen'. Signing is done in a different process, so secret-key is in a separate
 memory space than rest of the program.
 */
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#include <string.h>
+int subprocess_sign(unsigned char *y, long long ylen, const char *keydir,
+                    unsigned char *x, long long xlen) {
+    if (ylen != sshcrypto_sign_bytes) bug_inval();
+    if (xlen != sshcrypto_hash_bytes) bug_inval();
+    if (!y || !keydir || !x) bug_inval();
+
+    unsigned char sk[sshcrypto_sign_SECRETKEYMAX];
+    unsigned char sm[sshcrypto_sign_MAX + sshcrypto_hash_MAX];
+    unsigned long long smlen;
+
+    int fdwd = open_cwd();
+    if (fdwd == -1) return -1;
+
+    /* signing starts here */
+    if (chdir(keydir) == -1) {
+        log_w2("sign: unable to change directory to ", keydir);
+        goto fail;
+    }
+    if (load(sshcrypto_sign_secretkeyfilename, sk,
+                sshcrypto_sign_secretkeybytes) == -1) {
+        log_w4("sign: unable to load secret-key from file ", keydir, "/",
+                sshcrypto_sign_secretkeyfilename);
+        purge(sk, sizeof sk);
+        goto fail;
+    }
+    if (sshcrypto_sign(sm, &smlen, x, sshcrypto_hash_bytes, sk) != 0) {
+        log_w4("sign: unable to sign using secret-key from file ", keydir,
+                "/", sshcrypto_sign_secretkeyfilename);
+        purge(sk, sizeof sk);
+        goto fail;
+    }
+    purge(sk, sizeof sk);
+    memcpy(y, sm, sshcrypto_sign_bytes);
+    int r = fchdir(fdwd);
+    close(fdwd);
+    return r;
+fail:
+    fchdir(fdwd);
+    close(fdwd);
+    return 111;
+}
+#else
 int subprocess_sign(unsigned char *y, long long ylen, const char *keydir,
                     unsigned char *x, long long xlen) {
 
@@ -96,3 +140,4 @@ int subprocess_sign(unsigned char *y, long long ylen, const char *keydir,
     if (!WIFEXITED(status)) return -1;
     return WEXITSTATUS(status);
 }
+#endif
